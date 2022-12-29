@@ -4,6 +4,7 @@ Processing news to get markets sentiment
 Finding the financial markets sentiment from textual data (headlines/articles) is the target of the project
 
 Steps and corresponding files:
+
 0) Find the dataset ( available at https://www.kaggle.com/datasets/gennadiyr/us-equities-news-data )
 1) Preprocessing --> NLP_FinSA_PreProcessing.ipynb
 2) Exploratory Data Analysis --> NLP_FinSA_EDA.ipynb
