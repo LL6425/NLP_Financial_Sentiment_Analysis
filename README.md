@@ -10,3 +10,5 @@ Steps and corresponding files:
 2) Exploratory Data Analysis --> NLP_FinSA_EDA.ipynb
 3) CountVectorizer Application --> NLP_FinSA_CV.ipynb
 
+Notes:
+- The whole project has been developed on Colab
