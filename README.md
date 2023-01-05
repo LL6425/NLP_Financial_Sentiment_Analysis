@@ -6,7 +6,7 @@ Finding the financial markets sentiment from textual data (headlines/articles) i
 Steps and corresponding files:
 
 0) Find the dataset ( available at https://www.kaggle.com/datasets/gennadiyr/us-equities-news-data )
-1) Preprocessing --> NLP_FinSA_PreProcessing.ipynb
+1) Preprocessing --> NLP_FSA_PreProcessing.ipynb
 2) Exploratory Data Analysis --> NLP_FinSA_EDA.ipynb
 3) CountVectorizer Application --> NLP_FinSA_CV.ipynb
 
