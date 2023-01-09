@@ -20,6 +20,14 @@ Steps and corresponding files:
    - Text vectorization through CountVectorizer
    - Default ML models application
    - Parameters Tuning of Vectorizer and ML models, also searched for scaling benefits 
+   
+n for n in range(Next_Steps)) Next Steps
+   Apply:
+   - TfidfVectorizer 
+   - Word Embedding (Word2vec)
+   - NLP Transformers (FinBERT)
+
+
 
 Notes:
 - The whole project has been developed on Colab
