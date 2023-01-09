@@ -21,9 +21,9 @@ Steps and corresponding files:
    - Default ML models application
    - Parameters Tuning of Vectorizer and ML models, also searched for scaling benefits 
    
-n for n in range(Next_Steps)) Next Steps
-   Apply:
-   - TfidfVectorizer 
+Next Steps:
+
+   - TfidfVectorizer with the inclusion of macro variables (inflation, interest rates) to provide an economic context to the textual data (to be integrated also in the      CountVectorizer analysis)
    - Word Embedding (Word2vec)
    - NLP Transformers (FinBERT)
 
