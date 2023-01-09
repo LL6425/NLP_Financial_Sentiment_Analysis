@@ -10,7 +10,16 @@ Steps and corresponding files:
    The dataset includes more than 200k financial news (title and corresponding article) in the timespan 2008-2020 with category (news/opinion),ticker and provider
    
 1) Preprocessing --> NLP_FSA_PreProcessing.ipynb
+   
+   - Cleaning textual data and get financial returns
+   - Providing different datasets including news only ones (no opinion articles) 
+   
 2) CountVectorizer Application --> NLP_FinSA_CountVectorizer.ipynb
+
+   - Binary and various ternary classifications of headlines/articles using financial returns
+   - Text vectorization through CountVectorizer
+   - Default ML models application
+   - Parameters Tuning of Vectorizer and ML models, also searched for scaling benefits 
 
 Notes:
 - The whole project has been developed on Colab
