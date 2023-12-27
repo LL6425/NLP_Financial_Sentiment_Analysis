@@ -1,34 +1,21 @@
 # NLP_Financial_Sentiment_Analysis
-Processing news to get markets sentiment
 
-Finding the financial markets sentiment from textual data (headlines/articles) is the target of the project
 
-Steps and corresponding files:
+Goal: Detecting financial markets sentiment by text documents
 
-A) Find the dataset ( available at https://www.kaggle.com/datasets/gennadiyr/us-equities-news-data )
+Pipeline description:
+- Text cleaning and labelling through stock index financial returns
+- Feature extraction using statistical methods bag of words methods (Count/Tfidf Vectorizers)
+- Traditional ML Models
 
-   The dataset includes more than 200k financial news (title and corresponding article) in the timespan 2008-2020 with category (news/opinion),ticker and provider
-   
-B) Preprocessing --> 0_Data_PreProcessing.ipynb
-   
-   - Cleaning textual data and get financial returns
-   - Binary and ternary classifications of headlines/articles using financial returns
-     
-   
-C) Vectorizers Parameters Optimization --> NLP_FinSA_CountVectorizer.ipynb
 
-   
-   - Text vectorization through CountVectorizer / TfidfVectorizer
-   - Default ML models application
-   - Parameters Tuning of Vectorizer  
-   
-Next Steps:
+Steps:
 
-   - TfidfVectorizer with the inclusion of macro variables (inflation, interest rates) to provide an economic context to the textual data (to be integrated also in the      CountVectorizer analysis)
-   - Word Embedding (Word2vec)
-   - NLP Transformers (FinBERT)
+0. Exploratory data analysis
+1. Data Preprocessing and Labelling
+2. Pipeline Optimization (tuning)
+3. Deploy and Evaluate performances
+4. Wrap results for further usage
 
 
 
-Notes:
-- The whole project has been developed on Colab
