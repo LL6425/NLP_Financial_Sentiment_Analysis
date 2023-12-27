@@ -1,6 +1,5 @@
 # NLP_Financial_Sentiment_Analysis
 
-
 Goal: Detecting financial markets sentiment by text documents
 
 Pipeline description:
