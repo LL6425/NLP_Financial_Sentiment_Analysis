@@ -6,10 +6,12 @@ from nltk.stem.porter import PorterStemmer
 import numpy as np
 import pandas as pd
 from itertools import product
-from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
-from sklearn.metrics import accuracy_score, matthews_corrcoef
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from tqdm.notebook import tqdm
+from sklearn.metrics import accuracy_score, matthews_corrcoef, f1_score, roc_auc_score
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import FunctionTransformer
+from skopt import BayesSearchCV
+
 
 
 class TextCleaner:
@@ -105,110 +107,244 @@ class TextCleaner:
 
 
 
-class EvalClfPipeParams:
+
+
+class CustomEval:
 
     def __init__(self,
-                 vectorizers: list,
-                 vects_grid: dict,
-                 models_grid: dict,
-                 text: list,
-                 y: list,
-                 test_size: int,
-                 cv: int):
+                 clf: str = None,
+                 metrics = ['MCC','accuracy'],
+                 summary_metric = 'wavg',
+                 sm_weights: dict = None
+                 ):
         
+        self.clf = clf
+        self.metrics = metrics
 
-        self.vects = vectorizers
-        self.vects_combos = {vc: [dict(zip(vects_grid.keys(), combo)) for combo in product(*vects_grid.values())] for vc in vectorizers}
+        self.summary_metric = summary_metric
+        self.sm_weights = {mt: 1/len(metrics) for mt in metrics} if sm_weights is None else sm_weights
 
-        
-        self.base_models = models_grid.keys()
-        self.models_combos = {mdl: [dict(zip(models_grid[mdl]['tuning'].keys(), combo), **models_grid[mdl]['fixed']) for combo in product(*models_grid[mdl]['tuning'].values())] for mdl in models_grid.keys()}
-        self.text = text
-        self.y = y
-        self.test_size = test_size
-        self.cv = cv
-        
-        self.results = None
-
+        self.standard_metrics = {'MCC','accuracy','F1','roc_auc'}
+        self.custom_metrics = {'pnl_sum','MDD'}
 
     @staticmethod
-    def split_dataset_points(test_size: int, cv: int, size: int) -> list:
+    def max_drawdown(y_true: np.array, y_pred: np.array, rets: np.array, clf: str) -> float:
 
-        output = [size - (j+1)*test_size for j in range(cv)]
+        if clf=='binary':
 
-        return output
+            mult_factors = np.where(y_true==y_pred, 1+abs(rets), 1-abs(rets))
+
+        elif clf=='ternary':
+
+            mult_factors = np.where(np.logical_or(np.logical_and(y_pred==2,rets>=0),np.logical_and(y_pred==0,rets<0)), 1+abs(rets),
+                                     np.where(y_pred==1, 1, 1-abs(rets)))
+
+        else:
+
+            raise ValueError(f'Classification {clf} not admitted. Available are binary, ternary')
+
+        compound_returns = np.cumprod(mult_factors)
+
+        drawdowns = (np.maximum.accumulate(compound_returns) - compound_returns) / np.maximum.accumulate(compound_returns)
+
+        max_dd = -np.max(drawdowns) if -np.max(drawdowns) < 0 else np.nan
+
+        return max_dd
+    
 
     @staticmethod
-    def setup_feature_extraction(vectorizer_str: str, parameters: dict):
+    def pnl_sum(y_true: np.array, y_pred: np.array, rets: np.array, clf: str) -> float:
 
-        fe = CountVectorizer(**parameters) if vectorizer_str=='cv' else TfidfVectorizer(**parameters)
+        if clf=='binary':
 
-        return fe
+            realized_rets = np.where(y_true==y_pred, abs(rets), -abs(rets))
+
+        elif clf=='ternary':
+
+            realized_rets = np.where(np.logical_or(np.logical_and(y_pred==2,rets>=0),np.logical_and(y_pred==0,rets<0)), abs(rets),
+                                     np.where(y_pred==1, 0, -abs(rets)))
+
+        else:
+
+            raise ValueError(f'Classification {clf} not admitted. Available are binary, ternary')
+
+        return np.sum(realized_rets)
     
     @staticmethod
-    def setup_model(model_str: str, parameters: dict):
+    def compute_wavg_summary_metric(metrics_results: dict, weights: dict) -> float:
 
-        match model_str:
+        assert set(weights.keys()).issubset(set(metrics_results.keys())), f'Check weights and metrics keys, {set(weights.keys()) - set(metrics_results.keys())} not found in metrics_results keys' 
 
-            case 'DecisionTreeClassifier':
+        weights_sum = np.sum(list(weights.values()))
 
-                return DecisionTreeClassifier(**parameters)
+        relative_weights = {mt: wt/weights_sum for mt,wt in weights.items()}
+
+        summary_metric = np.sum([metrics_results[mt]*relative_weights[mt] for mt in weights.keys()])
+
+        return summary_metric
+
+
+    def eval(self, y_true: np.array, y_pred: np.array, rets: np.array) -> dict:
+
+        standard_metrics_to_comp = set(self.metrics).intersection(self.standard_metrics)
+
+        custom_metrics_to_comp = set(self.metrics).intersection(self.custom_metrics)
+
+        metric_func = {'MCC': matthews_corrcoef,
+                       'accuracy': accuracy_score,
+                       'F1': f1_score,
+                       'roc_auc':roc_auc_score,
+                       'pnl_sum': self.pnl_sum,
+                       'MDD':self.max_drawdown}
+        
+        results = {}
+
+        for st_metric in standard_metrics_to_comp:
+
+            try:
+
+                results[st_metric] = metric_func[st_metric](y_true, y_pred)
+
+            except:
+
+                results[st_metric] = np.nan
+
+        for cust_metric in custom_metrics_to_comp:
+
+            results[cust_metric] = metric_func[cust_metric](y_true, y_pred, rets, self.clf)
+
+        if self.summary_metric=='wavg':
+
+            results['summary_metric'] = self.compute_wavg_summary_metric(results, self.sm_weights)
+
+        elif callable(self.summary_metric):
+
+            results['summary_metric'] = self.summary_metric(results, self.sm_weights)
+
+        else:
+
+            pass
+
+        return results
+
+
+
+
+
+class NlpPipeBayesSearch:
+
+    def __init__(self, 
+                 vects_dict: dict,
+                 clfs_dict: dict,
+                 cv_object,
+                 n_iter: int,
+                 random_state,
+                 n_jobs: int,
+                 scoring = None,
+                 std_penalty: bool = True):
+        
+        self.vects_dict = vects_dict
+        self.clfs_dict = clfs_dict
+        
+        self.cv, self.n_iter = cv_object, n_iter
+
+        self.random_state = random_state
+        self.n_jobs = n_jobs
+        self.scoring = scoring
+
+        self.std_penalty = std_penalty
+
+        self.pipelines_instructions, self.combos_results = None, None
+
+    @staticmethod
+    def build_pipelines(vects_dict, clfs_dict):
+
+        pipelines_dict = {}
+
+        combos = product([(k,v['object']) for k,v in vects_dict.items()], [(k,v['object']) for k,v in clfs_dict.items()])
+
+        for (vect_str,vect_object), (model_str, model_object) in combos:
+
+            pipe = Pipeline([('vec',vect_object), ('to_array', FunctionTransformer(lambda x: x.toarray(), accept_sparse=True)), ('clf', model_object)])
+
+            param_space_vect = {f'vec__{par}':sp for par,sp in vects_dict[vect_str]['space'].items()}
+
+            param_space_mdl = {f'clf__{par}':sp for par,sp in clfs_dict[model_str]['space'].items()}
+
+            param_space = dict(**param_space_vect, **param_space_mdl)
+
+            key = (vect_str, model_str)
+
+            pipelines_dict[key] = {'pipe':pipe, 'space':param_space}
+
+        return pipelines_dict
+
+
+    @staticmethod
+    def best_stdpen_params(cv_results):
+
+        cv_results['penalized_mean_test_score'] = cv_results['mean_test_score'] - cv_results['std_test_score']
+
+        idx_best = np.argmax(cv_results['penalized_mean_test_score'])
+
+        best_params = dict(cv_results['params'][idx_best])
+
+        return cv_results, best_params 
+    
+    
+    def search(self, X: np.array, y: np.array):
+
+        cv_res_dict, selected_params = {}, {}
+
+        pipelines_dict = self.build_pipelines(self.vects_dict, self.clfs_dict)
+
+        for (vect_str, model_str), instructions in tqdm(pipelines_dict.items()):
+
+            pipe, space = instructions['pipe'], instructions['space']
+
+            bscv = BayesSearchCV(estimator = pipe, 
+                                 search_spaces = space, 
+                                 n_iter = self.n_iter, 
+                                 random_state=self.random_state, 
+                                 cv=self.cv,
+                                 n_jobs=self.n_jobs,
+                                 scoring=self.scoring)
             
-            case 'RandomForestClassifier':
-
-                return RandomForestClassifier(**parameters)
+            np.int = int
             
-            case 'GradientBoostingClassifier':
+            bscv.fit(X,y)
 
-                return GradientBoostingClassifier(**parameters)
+            cv_res = bscv.cv_results_.copy()
+
+            cv_res, best_params = (self.best_stdpen_params(cv_res)) if self.std_penalty else (cv_res, bscv.best_params_)
+
+            cv_res_dict[(vect_str, model_str)], selected_params[(vect_str, model_str)] = cv_res, dict(best_params)
+            
+
+        self.pipelines_instructions = selected_params
+        self.combos_results = cv_res_dict
+
+
+
+            
+
+
+
+
+
+
+
 
     
-    def eval(self):
+    
 
-        split_points = self.split_dataset_points(test_size = self.test_size, cv = self.cv, size = len(self.text))
 
-        results = list()
 
-        for vct_str in self.vects:
 
-            for vct_par_dict in self.vects_combos[vct_str]:
 
-                for base_model in self.base_models:
 
-                    for mdl_params in self.models_combos[base_model]:
 
-                        acc_cv_results, mcc_cv_results = list(), list()
 
-                        for sp in split_points:
-
-                            train_text, test_text = self.text[:sp], self.text[sp:sp+self.test_size]
-
-                            fe = self.setup_feature_extraction(vct_str, vct_par_dict)
-
-                            fe.fit(train_text)
-
-                            X_train, X_test = fe.transform(train_text).toarray(), fe.transform(test_text).toarray()
-
-                            y_train, y_test = self.y[:sp], self.y[sp:sp+self.test_size]
-
-                            model = self.setup_model(base_model, mdl_params)
-
-                            model.fit(X_train, y_train)
-
-                            predictions = model.predict(X_test)
-
-                            mcc, accuracy = matthews_corrcoef(y_test, predictions), accuracy_score(y_test, predictions)
-
-                            acc_cv_results.append(accuracy)
-                            mcc_cv_results.append(mcc)
-
-                        to_store = (vct_str, vct_par_dict, model.__class__.__name__, mdl_params, np.mean(mcc_cv_results), np.mean(acc_cv_results))
-
-                        results.append(to_store)
-
-        df_results = pd.DataFrame(results, columns=['Vectorizer', 'Vect_parameters', 'Model', 'Model_parameters', 'MCC', 'accuracy']).sort_values(['MCC','accuracy'], ascending=[False,False])
-
-        self.results = df_results
 
 
 
