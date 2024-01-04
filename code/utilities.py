@@ -184,7 +184,7 @@ class CustomEval:
         return summary_metric
 
 
-    def eval(self, y_true: np.array, y_pred: np.array, rets: np.array) -> dict:
+    def eval(self, y_true: np.array, y_pred: np.array, rets=None) -> dict:
 
         standard_metrics_to_comp = set(self.metrics).intersection(self.standard_metrics)
 
